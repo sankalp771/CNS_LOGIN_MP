@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Login System using Captcha and Hashing</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="card" aria-live="polite">
+        <h1 class="app-title">Secure Login System</h1>
+
+        <div class="toggle">
+          <button id="show-login" class="toggle-btn active" type="button" aria-pressed="true">Login</button>
+          <button id="show-register" class="toggle-btn" type="button" aria-pressed="false">Register</button>
+        </div>
+
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="form form-active" autocomplete="off" novalidate>
+          <div class="field">
+            <label for="login-username">Username</label>
+            <input id="login-username" name="username" type="text" required placeholder="Enter username" />
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" required placeholder="Enter password" />
+          </div>
+          <div class="captcha-row">
+            <div class="captcha-box" id="login-captcha-text" aria-label="Captcha code">------</div>
+            <button class="btn ghost" type="button" id="login-refresh-captcha" title="Refresh Captcha">Refresh Captcha</button>
+          </div>
+          <div class="field">
+            <label for="login-captcha-input">Enter Captcha</label>
+            <input id="login-captcha-input" type="text" inputmode="latin" maxlength="6" placeholder="Type the code above" required />
+          </div>
+          <button class="btn primary" type="submit">Login</button>
+        </form>
+
+        <!-- Register Form -->
+        <form id="register-form" class="form" autocomplete="off" novalidate hidden>
+          <div class="field">
+            <label for="reg-username">Username</label>
+            <input id="reg-username" name="username" type="text" required placeholder="Choose a username" />
+          </div>
+          <div class="field">
+            <label for="reg-password">Password</label>
+            <input id="reg-password" name="password" type="password" required placeholder="Create a password" />
+          </div>
+          <div class="captcha-row">
+            <div class="captcha-box" id="reg-captcha-text" aria-label="Captcha code">------</div>
+            <button class="btn ghost" type="button" id="reg-refresh-captcha" title="Refresh Captcha">Refresh Captcha</button>
+          </div>
+          <div class="field">
+            <label for="reg-captcha-input">Enter Captcha</label>
+            <input id="reg-captcha-input" type="text" inputmode="latin" maxlength="6" placeholder="Type the code above" required />
+          </div>
+          <button class="btn success" type="submit">Register</button>
+        </form>
+
+        <p class="hint">
+          Tip: Try registering a user like <code>testuser</code> with any password, then login.
+        </p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+  </html>
+
+
