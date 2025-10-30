@@ -1,7 +1,8 @@
-// Secure Login System using Captcha and Hashing (No backend)
-// - Stores username and SHA-256 hashed password in localStorage
+// Secure Login System using Captcha and Hashing with SALT (No backend)
+// - Stores username and SHA-256 hashed password WITH SALT in localStorage
 // - Validates captcha on register and login
 // - Refreshes captcha on every attempt and toggle
+// - Uses username as part of salt for better security
 
 // ----------------------------
 // Utilities
@@ -40,6 +41,17 @@ async function sha256(text) {
   return hex;
 }
 
+/**
+ * Hash password with salt (username-based + static salt)
+ * This prevents rainbow table attacks and makes same passwords have different hashes
+ */
+async function sha256WithSalt(password, username) {
+  const STATIC_SALT = 'CNS_PROJECT_2024_SECURE_SALT'; // Static application salt
+  const dynamicSalt = username.toLowerCase(); // Per-user salt
+  const saltedPassword = dynamicSalt + password + STATIC_SALT;
+  return await sha256(saltedPassword);
+}
+
 /** Persist and read users map from localStorage */
 function getUsersStore() {
   const raw = localStorage.getItem('users');
@@ -49,6 +61,54 @@ function getUsersStore() {
 
 function setUsersStore(map) {
   localStorage.setItem('users', JSON.stringify(map));
+}
+
+// ----------------------------
+// Rate Limiting (Simple Implementation)
+// ----------------------------
+const LOGIN_ATTEMPTS = {};
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_TIME = 60000; // 1 minute in milliseconds
+
+function checkRateLimit(username) {
+  const now = Date.now();
+  if (!LOGIN_ATTEMPTS[username]) {
+    LOGIN_ATTEMPTS[username] = { count: 0, lastAttempt: now };
+    return true;
+  }
+
+  const attempt = LOGIN_ATTEMPTS[username];
+
+  // Reset if lockout time has passed
+  if (now - attempt.lastAttempt > LOCKOUT_TIME) {
+    attempt.count = 0;
+    attempt.lastAttempt = now;
+    return true;
+  }
+
+  // Check if locked out
+  if (attempt.count >= MAX_ATTEMPTS) {
+    const timeLeft = Math.ceil((LOCKOUT_TIME - (now - attempt.lastAttempt)) / 1000);
+    return { locked: true, timeLeft };
+  }
+
+  return true;
+}
+
+function recordFailedAttempt(username) {
+  const now = Date.now();
+  if (!LOGIN_ATTEMPTS[username]) {
+    LOGIN_ATTEMPTS[username] = { count: 1, lastAttempt: now };
+  } else {
+    LOGIN_ATTEMPTS[username].count++;
+    LOGIN_ATTEMPTS[username].lastAttempt = now;
+  }
+}
+
+function resetAttempts(username) {
+  if (LOGIN_ATTEMPTS[username]) {
+    LOGIN_ATTEMPTS[username].count = 0;
+  }
 }
 
 // ----------------------------
@@ -127,8 +187,12 @@ function showRegister() {
 
 // Prefill sample for convenience during testing
 if (!localStorage.getItem('users')) {
-  // no users yet; just a hint in console
-  console.log('No users stored yet. Register a user to test login.');
+  console.log('🔒 CNS Project: Secure Login System initialized');
+  console.log('📝 No users stored yet. Register a user to test login.');
+  console.log('🔐 Security Features:');
+  console.log('   - SHA-256 Hashing with Salt');
+  console.log('   - Rate Limiting (5 attempts per minute)');
+  console.log('   - Captcha Validation');
 }
 
 showLogin(); // default view
@@ -171,6 +235,18 @@ registerForm.addEventListener('submit', async (e) => {
     return;
   }
 
+  if (username.length < 3) {
+    setMessage('Username must be at least 3 characters.', 'error');
+    refreshRegisterCaptcha();
+    return;
+  }
+
+  if (password.length < 6) {
+    setMessage('Password must be at least 6 characters.', 'error');
+    refreshRegisterCaptcha();
+    return;
+  }
+
   if (captchaInput !== expectedCaptcha) {
     setMessage('Invalid captcha. Please try again.', 'error');
     refreshRegisterCaptcha();
@@ -185,18 +261,29 @@ registerForm.addEventListener('submit', async (e) => {
     return;
   }
 
-  const hashed = await sha256(password);
-  console.log('[Register] Username:', username, 'SHA-256 Hash:', hashed);
+  // Hash with salt (username + static salt)
+  const hashed = await sha256WithSalt(password, username);
+  console.log('[Register] Username:', username);
+  console.log('[Register] SHA-256 Hash (with salt):', hashed);
+  console.log('[Security] Salt includes username + static application salt');
 
-  users[username] = { hashedPassword: hashed };
+  users[username] = {
+    hashedPassword: hashed,
+    createdAt: new Date().toISOString()
+  };
   setUsersStore(users);
 
-  setMessage('Registration successful! You can login now.', 'success');
+  setMessage('✅ Registration successful! You can login now.', 'success');
 
   // Clear inputs and switch to login
+  regUsername.value = '';
   regPassword.value = '';
   regCaptchaInput.value = '';
-  showLogin();
+
+  setTimeout(() => {
+    showLogin();
+    loginUsername.value = username;
+  }, 1000);
 });
 
 // ----------------------------
@@ -217,10 +304,20 @@ loginForm.addEventListener('submit', async (e) => {
     return;
   }
 
+  // Check rate limiting
+  const rateLimitCheck = checkRateLimit(username);
+  if (rateLimitCheck.locked) {
+    setMessage(`🔒 Too many attempts. Try again in ${rateLimitCheck.timeLeft} seconds.`, 'error');
+    refreshLoginCaptcha();
+    loginCaptchaInput.value = '';
+    return;
+  }
+
   if (captchaInput !== expectedCaptcha) {
     setMessage('Invalid captcha. Please try again.', 'error');
     refreshLoginCaptcha();
     loginCaptchaInput.value = '';
+    recordFailedAttempt(username);
     return;
   }
 
@@ -229,24 +326,29 @@ loginForm.addEventListener('submit', async (e) => {
   if (!user) {
     setMessage('Invalid credentials.', 'error');
     refreshLoginCaptcha();
+    recordFailedAttempt(username);
     return;
   }
 
-  const hashedAttempt = await sha256(password);
-  console.log('[Login] Username:', username, 'Attempt Hash:', hashedAttempt);
+  // Hash the attempt with the same salt method
+  const hashedAttempt = await sha256WithSalt(password, username);
+  console.log('[Login] Username:', username);
+  console.log('[Login] Attempt Hash (with salt):', hashedAttempt);
+  console.log('[Login] Stored Hash:', user.hashedPassword);
 
   if (hashedAttempt === user.hashedPassword) {
-    setMessage('Login Successful.', 'success');
+    resetAttempts(username);
+    setMessage('✅ Login Successful! Redirecting...', 'success');
     // Create a lightweight session and navigate to the explanation page
     localStorage.setItem('authUser', username);
-    setTimeout(() => { window.location.href = 'success.html'; }, 350);
+    setTimeout(() => { window.location.href = 'success.html'; }, 800);
   } else {
-    setMessage('Invalid credentials.', 'error');
+    recordFailedAttempt(username);
+    const attemptsLeft = MAX_ATTEMPTS - (LOGIN_ATTEMPTS[username]?.count || 0);
+    setMessage(`Invalid credentials. ${attemptsLeft} attempts remaining.`, 'error');
   }
 
   // Refresh captcha after each attempt
   refreshLoginCaptcha();
   loginCaptchaInput.value = '';
 });
-
-
